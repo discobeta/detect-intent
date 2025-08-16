@@ -2,6 +2,7 @@ import re
 from typing import List, Optional, Tuple, Dict
 import phonenumbers
 from phonenumbers import NumberParseException, PhoneNumberFormat
+from .text_utils import TextCleaner, extract_digits_only
 
 def convert_words_to_digits(text: str) -> str:
     """
@@ -325,6 +326,43 @@ class PhoneNumberExtractor:
     
     def __init__(self, default_region: str = 'US'):
         self.default_region = default_region
+        
+        # Phone-specific filler phrases
+        self.phone_filler_phrases = [
+            "my number is", "phone number is", "call me at", "reach me at", 
+            "it's", "its", "it is", "phone number?", "sure,", "area code", 
+            "then", "and then", "oh wait", "I forgot", "you can call at"
+        ]
+        
+        # Area code patterns
+        self.area_code_patterns = [
+            r'area code[:\s]+(\d{3})',
+            r'area code\s+(\d)\s*(\d)\s*(\d)',  # "area code 4 1 5"
+            r'(\d{3}).*?(?:then|and then)',
+            r'area code[,\s]+it\'s\s+(\d{3})',
+            r'(?:^|[^\d])(\d{3})\s+(?:five|5|uh)',  # Catches "718 five five five" or "718 uh"
+            r'area code.*?(\d{3})$',  # Area code at end
+            r'plus\s*(?:one|1)\s*(\d{3})'  # "+1 917"
+        ]
+        
+        # Main number patterns
+        self.main_number_patterns = [
+            r'(\d{3})[-.\s]*(\d{4})',
+            r'(5\s*5\s*5)[-.\s]*(\d{4})',  # Handle "five five five" as "555"
+            r'(\d)\s*(\d)\s*(\d)[-.\s]*(\d)\s*(\d)\s*(\d)\s*(\d)',  # Individual digits
+            r'(555)[-.\s]*(\d{4})',  # Direct 555 pattern
+            r'dot\s*(\d{4})',  # Handle "dot 0123"
+            r'dash\s*(\d{3})[-.\s]*dash\s*(\d{4})',  # "dash 555 dash 0178"
+            r'zero\s*(\d{3})'  # Handle "zero one two three"
+        ]
+        
+        # Phone number regex patterns
+        self.phone_patterns = [
+            r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b',
+            r'\b\(\d{3}\)\s*\d{3}[-.]?\d{4}\b',
+            r'\b\d{3}\s+\d{3}\s+\d{4}\b',
+            r'\+?1?\s*\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b'
+        ]
     
     def extract_from_spoken_text(self, text: str) -> List[str]:
         """
@@ -363,6 +401,23 @@ class PhoneNumberExtractor:
         
         return list(set(formatted_numbers))
     
+    def clean_phone_response(self, response: str) -> str:
+        """
+        Clean a response containing a phone number by removing filler phrases.
+        
+        Args:
+            response (str): Raw response text
+            
+        Returns:
+            str: Cleaned response
+        """
+        cleaned = response.strip()
+        
+        # Remove common filler words
+        cleaned = TextCleaner.remove_filler_words(cleaned, self.phone_filler_phrases)
+        
+        return cleaned
+    
     def convert_spoken_to_digits(self, text: str) -> str:
         """
         Convert spoken number words to digits.
@@ -374,6 +429,88 @@ class PhoneNumberExtractor:
             str: Text with numbers converted to digits
         """
         return convert_words_to_digits(text)
+    
+    def extract_area_code(self, text: str) -> Optional[str]:
+        """
+        Extract area code from text using various patterns.
+        
+        Args:
+            text (str): Text containing phone number
+            
+        Returns:
+            Optional[str]: Area code if found
+        """
+        for pattern in self.area_code_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                # Handle multi-group matches (like individual digits)
+                if len(match.groups()) == 3:
+                    area_code = ''.join(match.groups())
+                else:
+                    area_code = match.group(1)
+                # Ensure it's 3 digits
+                if area_code and len(area_code) == 3:
+                    return area_code
+        return None
+    
+    def extract_main_number(self, text: str) -> Optional[str]:
+        """
+        Extract the main 7-digit phone number from text.
+        
+        Args:
+            text (str): Text containing phone number
+            
+        Returns:
+            Optional[str]: 7-digit number if found
+        """
+        # First handle "and then" pattern specially
+        and_then_match = re.search(r'and then\s+(\d+)', text, re.IGNORECASE)
+        if and_then_match:
+            # Extract everything after "and then"
+            after_and_then = and_then_match.group(1)
+            digits = extract_digits_only(after_and_then)
+            if len(digits) >= 7:
+                return digits[:7]
+        
+        # Try other patterns
+        for pattern in self.main_number_patterns:
+            match = re.search(pattern, text)
+            if match:
+                if pattern == r'dot\s*(\d{4})':
+                    # Special handling for "555 dot 0123" pattern
+                    # Look for preceding 3 digits
+                    prefix_match = re.search(r'(\d{3})\s*dot', text)
+                    if prefix_match:
+                        remaining = prefix_match.group(1) + match.group(1)
+                elif len(match.groups()) == 2:
+                    remaining = match.group(1) + match.group(2)
+                elif len(match.groups()) == 7:
+                    # Concatenate individual digits
+                    remaining = ''.join(match.groups())
+                else:
+                    continue
+                
+                if remaining:
+                    remaining = extract_digits_only(remaining)
+                    if len(remaining) == 7:
+                        return remaining
+        
+        return None
+    
+    def format_phone_number(self, area_code: str, main_number: str) -> str:
+        """
+        Format phone number in standard US format.
+        
+        Args:
+            area_code (str): 3-digit area code
+            main_number (str): 7-digit main number
+            
+        Returns:
+            str: Formatted phone number
+        """
+        if len(area_code) == 3 and len(main_number) == 7:
+            return f"({area_code}) {main_number[:3]}-{main_number[3:]}"
+        return ""
     
     def extract_all_methods(self, text: str) -> dict:
         """
@@ -409,6 +546,58 @@ class PhoneNumberExtractor:
         results['best_formatted'] = list(all_numbers)
         
         return results
+    
+    def extract_from_response(self, response: str) -> Optional[str]:
+        """
+        Extract a phone number from natural conversational response.
+        
+        Args:
+            response (str): Raw response text
+            
+        Returns:
+            Optional[str]: Extracted and formatted phone number
+        """
+        response = response.strip()
+        
+        # Try phonenumbers library first
+        try:
+            phone_numbers = extract_and_format_phone_numbers(response, self.default_region)
+            if phone_numbers:
+                return phone_numbers[0]
+        except:
+            pass
+        
+        # Normalize and clean the response
+        normalized = self.convert_spoken_to_digits(response)
+        cleaned = self.clean_phone_response(normalized)
+        
+        # Extract area code and main number
+        area_code = self.extract_area_code(cleaned)
+        main_number = self.extract_main_number(cleaned)
+        
+        # If we found both parts, format and return
+        if area_code and main_number:
+            return self.format_phone_number(area_code, main_number)
+        
+        # Also check if the full number is at the end after "area code is X"
+        end_pattern = r'area code[,\s]+it\'s\s+(\d{3})$'
+        end_match = re.search(end_pattern, cleaned, re.IGNORECASE)
+        if end_match and main_number:
+            area_code = end_match.group(1)
+            return self.format_phone_number(area_code, main_number)
+        
+        # Try standard phone patterns as last resort
+        for pattern in self.phone_patterns:
+            phones = re.findall(pattern, cleaned)
+            if phones:
+                # Format the phone number
+                digits = extract_digits_only(phones[0])
+                if len(digits) == 11 and digits.startswith('1'):
+                    digits = digits[1:]
+                if len(digits) == 10:
+                    return f"({digits[:3]}) {digits[3:6]}-{digits[6:]}"
+        
+        return None
     
     def extract_best(self, text: str) -> List[str]:
         """

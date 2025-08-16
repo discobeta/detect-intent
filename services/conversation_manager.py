@@ -1,6 +1,5 @@
 from typing import Dict, List, Optional, Any
 import json
-import asyncio
 from dataclasses import dataclass
 from enum import Enum
 
@@ -27,6 +26,7 @@ class ConversationContext:
     confidence: float = 0.0
 
 class IntentDetectionAgent:
+
     def __init__(self, model_client, function_schemas: List[FunctionSchema]):
         self.model_client = model_client
         self.function_schemas = {fs.name: fs for fs in function_schemas}
@@ -216,47 +216,3 @@ Just return the question text, nothing else.
 """
         
         return await self.model_client.generate(prompt)
-
-# Example usage
-async def example_usage():
-    # Define your function schemas
-    schemas = [
-        FunctionSchema(
-            name="book_flight",
-            description="Book a flight for the user",
-            parameters={
-                "origin": {"type": "string", "description": "Departure city"},
-                "destination": {"type": "string", "description": "Arrival city"},
-                "date": {"type": "string", "description": "Travel date (YYYY-MM-DD)"},
-                "passengers": {"type": "integer", "description": "Number of passengers"}
-            },
-            required=["origin", "destination", "date"]
-        ),
-        FunctionSchema(
-            name="check_weather",
-            description="Get weather information for a location",
-            parameters={
-                "location": {"type": "string", "description": "City name"},
-                "date": {"type": "string", "description": "Date to check (optional)"}
-            },
-            required=["location"]
-        )
-    ]
-    
-    # Initialize agent (you'll need to implement your model client)
-    agent = IntentDetectionAgent(model_client=None, function_schemas=schemas)
-    
-    # Start conversation
-    context = ConversationContext(
-        state=ConversationState.DETECTING_INTENT,
-        gathered_parameters={},
-        conversation_history=[]
-    )
-    
-    # Process user input
-    user_input = "I want to fly to Paris"
-    context = await agent.process_user_input(user_input, context)
-    response = await agent.generate_response(context)
-    
-    print(f"Agent: {response}")
-    print(f"Context: {context}")

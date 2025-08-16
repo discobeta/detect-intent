@@ -3,6 +3,7 @@ import spacy
 from typing import List, Dict, Optional
 import usaddress
 import pyap
+from .text_utils import TextCleaner, NumberNormalizer
 
 def extract_addresses_pyap(text: str, country: str = 'US') -> List[str]:
     """
@@ -201,6 +202,153 @@ class AddressExtractor:
         except:
             self.nlp = None
             print("Warning: spaCy model not available")
+        
+        # Initialize utilities
+        self.number_normalizer = NumberNormalizer()
+        
+        # Address-specific filler phrases
+        self.address_filler_phrases = [
+            "they're at", "you'll find them at", "the address is", "it's at", 
+            "send everything to", "they're located at", "you can mail it to",
+            "it's gonna be", "address is", "the mailing address is",
+            "oh the address?", "so you'll find them at", "my office is at",
+            "send it to", "i live at", "located at", "um", "uh", "umm", "uhh",
+            "let me think", "let me see", "wait", "no wait", "no sorry",
+            "that's on the", "hmm", "oh"
+        ]
+        
+        # Common street types
+        self.street_types = [
+            "street", "st", "avenue", "ave", "road", "rd", "lane", "ln", 
+            "drive", "dr", "boulevard", "blvd", "way", "court", "ct", 
+            "place", "pl", "circle", "parkway", "highway", "broadway"
+        ]
+    
+    def clean_address_response(self, response: str) -> str:
+        """
+        Clean a response containing an address by removing filler phrases.
+        
+        Args:
+            response (str): Raw response text
+            
+        Returns:
+            str: Cleaned response
+        """
+        cleaned = response.strip()
+        
+        # Remove filler phrases
+        cleaned = TextCleaner.remove_filler_words(cleaned, self.address_filler_phrases)
+        
+        # Fix common transcription issues
+        cleaned = TextCleaner.fix_transcription_issues(cleaned)
+        
+        # Remove leading punctuation
+        cleaned = re.sub(r'^[,.\s]+', '', cleaned)
+        
+        return cleaned.strip()
+    
+    def normalize_address_numbers(self, text: str) -> str:
+        """
+        Normalize written numbers in addresses to digits.
+        
+        Args:
+            text (str): Text with potential written numbers
+            
+        Returns:
+            str: Text with normalized numbers
+        """
+        return self.number_normalizer.normalize_numbers(text)
+    
+    def extract_from_response(self, response: str) -> Optional[str]:
+        """
+        Extract an address from natural conversational response.
+        
+        Args:
+            response (str): Raw response text
+            
+        Returns:
+            Optional[str]: Extracted address or None
+        """
+        response = response.strip()
+        
+        # Try using pyap first (most accurate)
+        try:
+            addresses = extract_addresses_pyap(response)
+            if addresses:
+                # Return the longest/most complete address
+                return max(addresses, key=len)
+        except:
+            pass
+        
+        # Normalize numbers and clean the response
+        normalized = self.normalize_address_numbers(response)
+        cleaned = self.clean_address_response(normalized)
+        
+        # Try to reconstruct addresses with natural speech patterns
+        address = self._reconstruct_address(cleaned)
+        if address:
+            return address
+        
+        # Check if the cleaned text looks like an address
+        if self._looks_like_address(cleaned):
+            return cleaned
+        
+        return None
+    
+    def _reconstruct_address(self, cleaned: str) -> Optional[str]:
+        """
+        Try to reconstruct an address from cleaned text.
+        
+        Args:
+            cleaned (str): Cleaned text
+            
+        Returns:
+            Optional[str]: Reconstructed address or None
+        """
+        # Look for address components
+        street_pattern = r'(\d+)\s+([A-Za-z\s]+?)(?:\s+(?:' + '|'.join(self.street_types) + '))'
+        unit_pattern = r'(?:apartment|apt|suite|ste|unit|floor|#)\s*([A-Za-z0-9]+)'
+        city_state_pattern = r'([A-Za-z\s]+?)[\s,]+([A-Z]{2})\s+(\d{5}(?:-\d{4})?)'
+        
+        # Try to find street address
+        street_match = re.search(street_pattern, cleaned, re.IGNORECASE)
+        unit_match = re.search(unit_pattern, cleaned, re.IGNORECASE)
+        city_state_match = re.search(city_state_pattern, cleaned)
+        
+        if street_match and city_state_match:
+            # Reconstruct the address
+            street = street_match.group(0)
+            unit = f", {unit_match.group(0)}" if unit_match else ""
+            city_state_zip = city_state_match.group(0)
+            
+            return f"{street}{unit}, {city_state_zip}"
+        
+        return None
+    
+    def _looks_like_address(self, text: str) -> bool:
+        """
+        Check if text looks like it contains an address.
+        
+        Args:
+            text (str): Text to check
+            
+        Returns:
+            bool: True if text likely contains an address
+        """
+        # Check if it has street indicators
+        has_street = any(word in text.lower() for word in self.street_types)
+        
+        # Check for numbers
+        has_numbers = any(char.isdigit() for char in text)
+        
+        # Check for state abbreviation
+        has_state = re.search(r'\b[A-Z]{2}\b', text) is not None
+        
+        # Check for ZIP code
+        has_zip = re.search(r'\b\d{5}\b', text) is not None
+        
+        # If it has street indicators or state/zip and numbers, likely an address
+        return has_numbers and (has_street or (has_state and has_zip))
     
     def extract_best_addresses(self, text: str) -> List[str]:
         """

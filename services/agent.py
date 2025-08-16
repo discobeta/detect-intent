@@ -2,14 +2,14 @@
 Agent service for handling conversational interactions
 """
 
-import asyncio
 import json
 import os
 from typing import Dict, Any, Optional
 from pathlib import Path
 
 from .conversation_manager import IntentDetectionAgent, ConversationContext, ConversationState, FunctionSchema
-from models.improved_local_client import ImprovedLocalClient
+from models.google_model_client import GoogleModelClient
+
 
 
 class AgentService:
@@ -18,7 +18,7 @@ class AgentService:
     def __init__(self, config_path: str = "config/agent_config.json"):
         """Initialize the agent service with configuration"""
         self.config = self._load_config(config_path)
-        self.client = ImprovedLocalClient(model_name=self.config["model"]["name"])
+        self.client = GoogleModelClient(model_name=self.config["model"]["name"])
         self.agent = self._initialize_agent()
         self.context = self._reset_context()
         
