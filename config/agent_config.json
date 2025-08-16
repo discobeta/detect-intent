@@ -1,0 +1,97 @@
+{
+  "agent": {
+    "name": "Assistant",
+    "description": "I can help you manage clients, check weather, book restaurants, and send emails.",
+    "instructions": "Type your request or 'quit' to exit.",
+    "exit_commands": ["quit", "exit", "bye", "goodbye"],
+    "goodbye_message": "Goodbye! Have a great day! 👋"
+  },
+  "model": {
+    "name": "google/flan-t5-small",
+    "type": "local",
+    "cache_dir": "./model_cache"
+  },
+  "functions": [
+    {
+      "name": "create_client",
+      "description": "Create a new client in the system",
+      "parameters": {
+        "client_name": {
+          "type": "string",
+          "description": "Full name of the client"
+        },
+        "phone_number": {
+          "type": "string",
+          "description": "Client's phone number"
+        },
+        "address": {
+          "type": "string",
+          "description": "Client's full address"
+        },
+        "email": {
+          "type": "string",
+          "description": "Client's email address (optional)"
+        }
+      },
+      "required": ["client_name", "phone_number", "address"]
+    },
+    {
+      "name": "check_weather",
+      "description": "Get weather information for a location",
+      "parameters": {
+        "location": {
+          "type": "string",
+          "description": "City name or zip code"
+        },
+        "date": {
+          "type": "string",
+          "description": "Date to check (YYYY-MM-DD, optional)"
+        }
+      },
+      "required": ["location"]
+    },
+    {
+      "name": "book_restaurant",
+      "description": "Make a restaurant reservation",
+      "parameters": {
+        "restaurant_name": {
+          "type": "string",
+          "description": "Name of the restaurant"
+        },
+        "date": {
+          "type": "string",
+          "description": "Reservation date (YYYY-MM-DD)"
+        },
+        "time": {
+          "type": "string",
+          "description": "Reservation time (HH:MM AM/PM)"
+        },
+        "party_size": {
+          "type": "integer",
+          "description": "Number of people"
+        }
+      },
+      "required": ["restaurant_name", "date", "time", "party_size"]
+    },
+    {
+      "name": "send_email",
+      "description": "Send an email message",
+      "parameters": {
+        "to": {
+          "type": "string",
+          "description": "Recipient email address"
+        },
+        "subject": {
+          "type": "string",
+          "description": "Email subject"
+        },
+        "body": {
+          "type": "string",
+          "description": "Email body content"
+        }
+      },
+      "required": ["to", "subject", "body"]
+    }
+  ],
+  "debug": false
+}
