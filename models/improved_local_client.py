@@ -3,7 +3,7 @@
 Wrapper for backward compatibility - redirects to google_model_client
 """
 
-from google_model_client import GoogleModelClient
+from .google_model_client import GoogleModelClient
 
 # Alias for backward compatibility
 ImprovedLocalClient = GoogleModelClient

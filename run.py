@@ -4,6 +4,12 @@ Simple interactive agent runner
 """
 
 import asyncio
+import sys
+from pathlib import Path
+
+# Add the project root to Python path
+sys.path.append(str(Path(__file__).parent))
+
 from services.agent import create_agent_service
 
 

@@ -8,12 +8,8 @@ import os
 from typing import Dict, Any, Optional
 from pathlib import Path
 
-# Add parent directory to path for imports
-import sys
-sys.path.append(str(Path(__file__).parent.parent))
-
-from llm import IntentDetectionAgent, ConversationContext, ConversationState, FunctionSchema
-from improved_local_client import ImprovedLocalClient
+from .conversation_manager import IntentDetectionAgent, ConversationContext, ConversationState, FunctionSchema
+from models.improved_local_client import ImprovedLocalClient
 
 
 class AgentService:
